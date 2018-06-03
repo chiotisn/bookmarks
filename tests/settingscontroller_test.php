@@ -3,7 +3,7 @@
 namespace OCA\Bookmarks\Tests;
 
 use OCA\Bookmarks\Controller\Rest\SettingsController;
-use OCP\IConfig;
+use \OCP\IConfig;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 
@@ -18,30 +18,29 @@ class Test_SettingsController extends TestCase {
 	private $appName;
 	private $request;
 	/** @var IConfig */
-	protected $config;
+	private $config;
 	/** @var SettingsController */
 	private $controller;
 
 	protected function setUp() {
 		parent::setUp();
 
-		$this->userid = "tuser";
+		$this->userId = "tuser";
 		$this->appName = "bookmarks";
 		$this->request = \OC::$server->getRequest();
 		$userManager = \OC::$server->getUserManager();
-		if (!$userManager->userExists($this->userid)) {
-			$userManager->createUser($this->userid, 'password');
+		if (!$userManager->userExists($this->userId)) {
+			$userManager->createUser($this->userId, 'password');
 		}
 		$this->config = \OC::$server->getConfig();
-		$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount');
-		$this->controller = new SettingsController("bookmarks", $this->request, $this->userid, $this->config);
+		$this->controller = new SettingsController("bookmarks", $this->request, $this->userId, $this->config);
 	}
 	
 	/**
 	 * @covers \OCA\Bookmarks\Controller\Rest\SettingsController::getSorting
 	 */
 	function testGetSorting() {
-		//$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount'); //case: user has a normal sorting option
+		$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount'); //case: user has a normal sorting option
 		$output = $this->controller->getSorting();
 		$data = $output->getData();
 		$this->assertEquals('clickcount', $data['sorting']);
@@ -60,14 +59,12 @@ class Test_SettingsController extends TestCase {
 	 */
 	function testSetSorting() {
 		$output = $this->controller->setSorting('added'); //case: set a normal sorting option
-		$data = $output->getData();
-		$this->assertEquals('success', $data['status']);
-		//$this->assertEquals('added', $this->config->getUserValue($this->userId,$this->appName,'sorting','')); 
+		$this->assertEquals('added', $this->config->getUserValue($this->userId,$this->appName,'sorting','')); 
 		$output = $this->controller->setSorting('foo'); //case: set an invalid sorting option
 		$data = $output->getData();
 		$this->assertEquals('error', $data['status']);
 	}
-	
+
 	protected function tearDown() {
 		$this->config->deleteUserValue($this->userId, $this->appName, 'sorting');
 	}
