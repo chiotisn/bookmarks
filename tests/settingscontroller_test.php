@@ -37,7 +37,7 @@ class Test_SettingsController extends TestCase {
 	}
 	
 	/**
-	 * @covers SettingsController::getSorting
+	 * @covers \OCA\Bookmarks\Controller\Rest\SettingsController::getSorting
 	 */
 	function testGetSorting() {
 		$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount'); //case: user has a normal sorting option
@@ -55,7 +55,7 @@ class Test_SettingsController extends TestCase {
 	}
 
 	/**
-	 * @covers SettingsController::setSorting
+	 * @covers \OCA\Bookmarks\Controller\Rest\SettingsController::setSorting
 	 */
 	function testSetSorting() {
 		$output = $this->controller->setSorting('added'); //case: set a normal sorting option
