@@ -44,10 +44,6 @@ class Test_SettingsController extends TestCase {
 		$output = $this->controller->getSorting();
 		$data = $output->getData();
 		$this->assertEquals('clickcount', $data['sorting']);
-		$this->config->setUserValue($this->userId,$this->appName,'sorting','foo'); //case: user has an invalid sorting option 
-		$output = $this->controller->getSorting();
-		$data = $output->getData();
-		$this->assertEquals('lastmodified', $data['sorting']); //returns default
 		$this->config->deleteUserValue($this->userId, $this->appName, 'sorting'); //case: user has no sorting option 
 		$output = $this->controller->getSorting();
 		$data = $output->getData();
