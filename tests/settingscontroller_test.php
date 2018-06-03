@@ -60,7 +60,7 @@ class Test_SettingsController extends TestCase {
 		$data = $output->getData();
 		$this->assertEquals('error', $data['status']);
 	}
-
+	
 	protected function tearDown() {
 		$this->config->deleteUserValue($this->userId, $this->appName, 'sorting');
 	}
