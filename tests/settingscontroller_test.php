@@ -18,7 +18,7 @@ class Test_SettingsController extends TestCase {
 	private $appName;
 	private $request;
 	/** @var IConfig */
-	private $config;
+	protected $config;
 	/** @var SettingsController */
 	private $controller;
 
@@ -63,7 +63,10 @@ class Test_SettingsController extends TestCase {
 		$output = $this->controller->setSorting('foo'); //case: set an invalid sorting option
 		$data = $output->getData();
 		$this->assertEquals('error', $data['status']);
-		$this->config->deleteUserValue($this->userId, $this->appName, 'sorting'); //clean test data
+	}
+	
+	protected function tearDown() {
+		$this->config->deleteUserValue($this->userId, $this->appName, 'sorting');
 	}
 
 }
