@@ -55,6 +55,7 @@ branches:
   only:
     - master
     - /^stable\d+(\.\d+)?$/
+    - test-fixes
 
 before_install:
   - sudo apt-get -qq update
