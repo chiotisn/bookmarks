@@ -33,6 +33,7 @@ class Test_SettingsController extends TestCase {
 			$userManager->createUser($this->userid, 'password');
 		}
 		$this->config = \OC::$server->getConfig();
+		$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount');
 		$this->controller = new SettingsController("bookmarks", $this->request, $this->userid, $this->config);
 	}
 	
@@ -40,7 +41,7 @@ class Test_SettingsController extends TestCase {
 	 * @covers \OCA\Bookmarks\Controller\Rest\SettingsController::getSorting
 	 */
 	function testGetSorting() {
-		$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount'); //case: user has a normal sorting option
+		//$this->config->setUserValue($this->userId,$this->appName,'sorting','clickcount'); //case: user has a normal sorting option
 		$output = $this->controller->getSorting();
 		$data = $output->getData();
 		$this->assertEquals('clickcount', $data['sorting']);
