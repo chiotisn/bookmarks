@@ -3,7 +3,7 @@
 namespace OCA\Bookmarks\Tests;
 
 use OCA\Bookmarks\Controller\Rest\SettingsController;
-use \OCP\IConfig;
+use OCP\IConfig;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 
@@ -59,7 +59,9 @@ class Test_SettingsController extends TestCase {
 	 */
 	function testSetSorting() {
 		$output = $this->controller->setSorting('added'); //case: set a normal sorting option
-		$this->assertEquals('added', $this->config->getUserValue($this->userId,$this->appName,'sorting','')); 
+		$data = $output->getData();
+		$this->assertEquals('success', $data['status']);
+		//$this->assertEquals('added', $this->config->getUserValue($this->userId,$this->appName,'sorting','')); 
 		$output = $this->controller->setSorting('foo'); //case: set an invalid sorting option
 		$data = $output->getData();
 		$this->assertEquals('error', $data['status']);
