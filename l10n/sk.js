@@ -6,7 +6,15 @@ OC.L10N.register(
     "Bookm." : "Záložky",
     "No file provided for import" : "Nie je k dispozícii žiadny súbor na import",
     "Unsupported file type for import" : "Nepodporovaný typ súboru na import",
+    "Add a Bookmark" : "Pridať záložku",
+    "Details" : "Detaily",
+    "Delete" : "Zmazať",
+    "Saved" : "Uložené",
+    "All bookmarks" : "Všetky záložky",
+    "Settings" : "Nastavenia",
     "Bookmarklet" : "Záložky",
+    "Recently added" : "Nedávno pridané",
+    "Rename" : "Premenovať",
     "An error occurred while trying to save the bookmark." : "Pri pokuse o uloženie záložky sa vyskytla chyba.",
     "Error" : "Chyba",
     "Uploading..." : "Nahrávanie...",
@@ -18,9 +26,6 @@ OC.L10N.register(
     "The title of the page" : "Názov stránky",
     "The address of the page" : "Adresa stránky",
     "Description of the page" : "Popis stránky",
-    "Save" : "Uložiť",
-    "Export & Import" : "Export & Import",
-    "Export" : "Exportovať",
-    "Import" : "Importovať"
+    "Save" : "Uložiť"
 },
 "nplurals=4; plural=(n % 1 == 0 && n == 1 ? 0 : n % 1 == 0 && n >= 2 && n <= 4 ? 1 : n % 1 != 0 ? 2: 3);");

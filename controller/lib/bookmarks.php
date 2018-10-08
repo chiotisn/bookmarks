@@ -43,7 +43,7 @@ class Bookmarks {
 	/** @var IL10N */
 	private $l;
 
-    /** @var LinkExplorer */
+	/** @var LinkExplorer */
 	private $linkExplorer;
 
 	/** @var EventDispatcherInterface */
@@ -59,7 +59,7 @@ class Bookmarks {
 		IDBConnection $db,
 		IConfig $config,
 		IL10N $l,
-        LinkExplorer $linkExplorer,
+		LinkExplorer $linkExplorer,
 		UrlNormalizer $urlNormalizer,
 		EventDispatcherInterface $eventDispatcher,
 		ILogger $logger
@@ -87,7 +87,7 @@ class Bookmarks {
 			->select('t.tag')
 			->selectAlias($qb->createFunction('COUNT(' . $qb->getColumnName('t.bookmark_id') . ')'), 'nbr')
 			->from('bookmarks_tags', 't')
-			->innerJoin('t','bookmarks','b', $qb->expr()->eq('b.id', 't.bookmark_id'))
+			->innerJoin('t', 'bookmarks', 'b', $qb->expr()->eq('b.id', 't.bookmark_id'))
 			->where($qb->expr()->eq('b.user_id', $qb->createNamedParameter($userId)));
 		if (!empty($filterTags)) {
 			$qb->andWhere($qb->expr()->notIn('t.tag', array_map([$qb, 'createNamedParameter'], $filterTags)));
@@ -164,6 +164,7 @@ class Bookmarks {
 	 * @param bool $public check if only public bookmarks should be returned
 	 * @param array $requestedAttributes select all the attributes that should be returned. default is * + tags
 	 * @param string $tagFilterConjunction select wether the filterTagOnly should filter with an AND or an OR  conjunction
+	 * @param bool untagged if `true` only untagged bookmarks will be returned and the filters will have no effect
 	 * @return array Collection of specified bookmarks
 	 */
 	public function findBookmarks(
@@ -175,15 +176,16 @@ class Bookmarks {
 		$limit = 10,
 		$public = false,
 		$requestedAttributes = null,
-		$tagFilterConjunction = "and"
+		$tagFilterConjunction = "and",
+		$untagged = false
 	) {
 		$dbType = $this->config->getSystemValue('dbtype', 'sqlite');
 		if (is_string($filters)) {
-			$filters = array($filters);
+			$filters = [$filters];
 		}
 
-		$tableAttributes = array('id', 'url', 'title', 'user_id', 'description',
-			'public', 'added', 'lastmodified', 'clickcount', 'image', 'favicon');
+		$tableAttributes = ['id', 'url', 'title', 'user_id', 'description',
+			'public', 'added', 'lastmodified', 'clickcount'];
 
 		$returnTags = true;
 
@@ -198,17 +200,17 @@ class Bookmarks {
 			}
 			$selectedAttributes = array_intersect($tableAttributes, $requestedAttributes);
 			$qb->select($selectedAttributes);
-		}else{
+		} else {
 			$selectedAttributes = $tableAttributes;
 		}
 		$qb->select($selectedAttributes);
 
 		if ($dbType == 'pgsql') {
 			$qb->selectAlias($qb->createFunction("array_to_string(array_agg(" . $qb->getColumnName('t.tag') . "), ',')"), 'tags');
-        }else{
+		} else {
 			$qb->selectAlias($qb->createFunction('GROUP_CONCAT(' . $qb->getColumnName('t.tag') . ')'), 'tags');
 		}
-		
+
 		if (!in_array($sqlSortColumn, $tableAttributes)) {
 			$sqlSortColumn = 'lastmodified';
 		}
@@ -223,7 +225,17 @@ class Bookmarks {
 			$qb->andWhere($qb->expr()->eq('public', $qb->createPositionalParameter(1)));
 		}
 
-		if (count($filters) > 0) {
+		if ($untagged) {
+			if ($dbType == 'pgsql') {
+				$tagCol = $qb->createFunction("array_to_string(array_agg(" . $qb->getColumnName('t.tag') . "), ',')");
+			} else {
+				$tagCol = 'tags';
+			}
+			$qb->having($qb->expr()->orX(
+				$qb->expr()->emptyString($tagCol),
+				$qb->expr()->isNull($tagCol)
+			));
+		} elseif (count($filters) > 0) {
 			$this->findBookmarksBuildFilter($qb, $filters, $filterTagOnly, $tagFilterConjunction);
 		}
 
@@ -240,11 +252,11 @@ class Bookmarks {
 			}
 		}
 		$results = $qb->execute()->fetchAll();
-		$bookmarks = array();
+		$bookmarks = [];
 		foreach ($results as $result) {
 			if ($returnTags) {
 				// pgsql returns "", others null
-				if($result['tags'] === null || $result['tags'] === '') {
+				if ($result['tags'] === null || $result['tags'] === '') {
 					$result['tags'] = [];
 				} else {
 					$result['tags'] = explode(',', $result['tags']);
@@ -276,14 +288,14 @@ class Bookmarks {
 		$otherColumns = ['b.url', 'b.title', 'b.description'];
 		$i = 0;
 		foreach ($filters as $filter) {
-      		$expr = [];
+			$expr = [];
 			if ($dbType == 'pgsql') {
 				$expr[] = $qb->expr()->iLike(
 					// Postgres doesn't like select aliases in HAVING clauses, well f*** you too!
 					$qb->createFunction("array_to_string(array_agg(" . $qb->getColumnName('t.tag') . "), ',')"),
 					$qb->createPositionalParameter('%'.$this->db->escapeLikeParameter($filter).'%')
 				);
-			}else{
+			} else {
 				$expr[] = $qb->expr()->iLike('tags', $qb->createPositionalParameter('%'.$this->db->escapeLikeParameter($filter).'%'));
 			}
 			if (!$filterTagOnly) {
@@ -295,11 +307,11 @@ class Bookmarks {
 				}
 			}
 			$filterExpressions[] = call_user_func_array([$qb->expr(), 'orX'], $expr);
-      		$i++;
+			$i++;
 		}
 		if ($connectWord == 'AND') {
 			$filterExpression = call_user_func_array([$qb->expr(), 'andX'], $filterExpressions);
-		}else {
+		} else {
 			$filterExpression = call_user_func_array([$qb->expr(), 'orX'], $filterExpressions);
 		}
 		$qb->having($filterExpression);
@@ -342,6 +354,17 @@ class Bookmarks {
 		);
 
 		return true;
+	}
+
+	/**
+	 * Delete all bookmarks of a specific user
+	 * @param string $userrId User ID
+	 */
+	public function deleteAllBookmarks($userId) {
+		$allBookmarks = $this->findBookmarks($userId, -1, 'id', [], false, -1);
+		foreach ($allBookmarks as $bookmark) {
+			$this->deleteUrl($userId, $bookmark['id']);
+		}
 	}
 
 	/**
@@ -432,7 +455,6 @@ class Bookmarks {
 	 * @return null
 	 */
 	public function editBookmark($userid, $id, $url, $title, $tags = [], $description = '', $isPublic = false) {
-
 		$isPublic = $isPublic ? 1 : 0;
 
 		// normalize url
@@ -489,10 +511,10 @@ class Bookmarks {
 	 * @param string $image URL to a visual representation of the bookmarked site
 	 * @return int The id of the bookmark created
 	 */
-	public function addBookmark($userid, $url, $title, $tags = array(), $description = '', $isPublic = false, $image = null, $favicon = null) {
+	public function addBookmark($userid, $url, $title, $tags = [], $description = '', $isPublic = false, $image = null, $favicon = null) {
 		$public = $isPublic ? 1 : 0;
 
-    // do some meta tag inspection of the link...
+		// do some meta tag inspection of the link...
 
 		// allow only http(s) and (s)ftp
 		$protocols = '/^(https?|s?ftp)\:\/\//i';
@@ -501,10 +523,10 @@ class Bookmarks {
 				$data = $this->getURLMetadata($url);
 			} else {
 				// if no allowed protocol is given, evaluate https and https
-				foreach(['https://', 'http://'] as $protocol) {
+				foreach (['https://', 'http://'] as $protocol) {
 					$testUrl = $protocol . $url;
 					$data = $this->getURLMetadata($testUrl);
-					if(isset($data['title'])) {
+					if (isset($data['basic']) && isset($data['basic']['title'])) {
 						break;
 					}
 				}
@@ -515,24 +537,18 @@ class Bookmarks {
 			\OC::$server->getLogger()->logException($e, ['app' => 'bookmarks']);
 		}
 		if (isset($data['url'])) {
-			$url   = $data['url'];
+			$url = $data['url'];
 		}
 		if ((!isset($title) || trim($title) === '')) {
-			$title =  isset($data['title'])? $data['title'] : $url;
+			$title = isset($data['basic']) && isset($data['basic']['title'])? $data['basic']['title'] : $url;
 		}
-		if (isset($data['description']) && (!isset($description) || trim($description) === '')) {
-		  $description = $data['description'];
-		}
-		if (isset($data['image']) && !isset($image)) {
-		  $image = $data['image'];
-		}
-		if (isset($data['favicon']) && !isset($favicon)) {
-		  $favicon = $data['favicon'];
+		if (isset($data['basic']['description']) && (!isset($description) || trim($description) === '')) {
+			$description = $data['basic']['description'];
 		}
 
 		// Check if it is a valid URL (after adding http(s) prefix)
 		$urlData = parse_url($url);
-		if(!$this->isProperURL($urlData)) {
+		if (!$this->isProperURL($urlData)) {
 			throw new \InvalidArgumentException('Invalid URL supplied');
 		}
 
@@ -567,22 +583,14 @@ class Bookmarks {
 				$description = $row['description'];
 			}
 
-			if (!isset($image)) { // Do we replace the old description
-				$image = $row['image'];
-			}
-
-			if (!isset($favicon)) { // Do we replace the old description
-				$favicon = $row['favicon'];
-			}
-
-			$this->editBookmark($userid, $row['id'], $url, $title, $tags, $description, $isPublic, $image);
+			$this->editBookmark($userid, $row['id'], $url, $title, $tags, $description, $isPublic);
 
 			return $row['id'];
 		} else {
 			$qb = $this->db->getQueryBuilder();
 			$qb
 				->insert('bookmarks')
-				->values(array(
+				->values([
 					'url' => $qb->createParameter('url'),
 					'title' => $qb->createParameter('title'),
 					'user_id' => $qb->createParameter('user_id'),
@@ -590,19 +598,15 @@ class Bookmarks {
 					'added' => $qb->createFunction('UNIX_TIMESTAMP()'),
 					'lastmodified' => $qb->createFunction('UNIX_TIMESTAMP()'),
 					'description' => $qb->createParameter('description'),
-					'image' => $qb->createParameter('image'),
-					'favicon' => $qb->createParameter('favicon'),
-				))
+				])
 				->where($qb->expr()->eq('user_id', $qb->createParameter('user_id')));
-			$qb->setParameters(array(
+			$qb->setParameters([
 				'user_id' => $userid,
 				'url' => $decodedUrl,
 				'title' => htmlspecialchars_decode($title), // XXX: Should the title update above also decode it first?
 				'public' => $public,
-				'description' => $description,
-				'image' => $image,
-				'favicon' => $favicon
-			));
+				'description' => $description
+			]);
 
 			$qb->execute();
 
@@ -644,15 +648,17 @@ class Bookmarks {
 				->where($qb->expr()->eq('bookmark_id', $qb->createNamedParameter($bookmarkID)))
 				->andWhere($qb->expr()->eq('tag', $qb->createNamedParameter($tag)));
 
-			if ($qb->execute()->fetch()) continue;
+			if ($qb->execute()->fetch()) {
+				continue;
+			}
 
 			$qb = $this->db->getQueryBuilder();
 			$qb
 				->insert('bookmarks_tags')
-				->values(array(
+				->values([
 					'tag' => $qb->createNamedParameter($tag),
 					'bookmark_id' => $qb->createNamedParameter($bookmarkID)
-				));
+				]);
 			$qb->execute();
 		}
 	}
@@ -677,8 +683,9 @@ class Bookmarks {
 			$title = $link->nodeValue;
 			$ref = $link->getAttribute("href");
 			$tagStr = '';
-			if ($link->hasAttribute("tags"))
+			if ($link->hasAttribute("tags")) {
 				$tagStr = $link->getAttribute("tags");
+			}
 			$tags = explode(',', $tagStr);
 
 			$descriptionStr = '';
@@ -712,8 +719,8 @@ class Bookmarks {
 	 * @throws \Exception|ClientException
 	 */
 	public function getURLMetadata($url) {
-	    return $this->linkExplorer->get($url);
-    }
+		return $this->linkExplorer->get($url);
+	}
 
 	/**
 	 * @brief Separate Url String at comma character
@@ -722,10 +729,11 @@ class Bookmarks {
 	 * */
 	public function analyzeTagRequest($line) {
 		$tags = explode(',', $line);
-		$filterTag = array();
+		$filterTag = [];
 		foreach ($tags as $tag) {
-			if (trim($tag) != '')
+			if (trim($tag) != '') {
 				$filterTag[] = trim($tag);
+			}
 		}
 		return $filterTag;
 	}

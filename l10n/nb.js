@@ -6,9 +6,11 @@ OC.L10N.register(
     "Bookm." : "Bokmerk",
     "No file provided for import" : "Ingen fil valgt for import",
     "Unsupported file type for import" : "Usupportert filtype for import",
+    "Select" : "Velg",
+    "Deselect" : "Fjern markering",
     "An error occurred while trying to save the bookmark." : "En feil inntraff under forsøk på å lagre bokmerket.",
     "Error" : "Feil",
-    "Uploading..." : "Laster opp...",
+    "Uploading..." : "Laster opp …",
     "Import error" : "Feil under importering",
     "Import completed successfully." : "Importering fullført uten feil",
     "Set tags" : "Sett merkelapper",
@@ -17,9 +19,6 @@ OC.L10N.register(
     "The title of the page" : "Sidetittel",
     "The address of the page" : "Adresse til siden",
     "Description of the page" : "Beskrivelse av siden",
-    "Save" : "Lagre",
-    "Export & Import" : "Eksporter og Importer",
-    "Export" : "Eksporter",
-    "Import" : "Importer"
+    "Save" : "Lagre"
 },
 "nplurals=2; plural=(n != 1);");

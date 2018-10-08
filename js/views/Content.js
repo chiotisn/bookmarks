@@ -15,70 +15,107 @@ export default Marionette.View.extend({
 	template: _.template(templateString),
 	id: 'app-content',
 	regions: {
-		'mobileNav': {
+		mobileNav: {
 			el: '#mobile-nav-slot',
 			replaceElement: true
 		},
-		'bulkActions': {
+		bulkActions: {
 			el: '#bulk-actions-slot',
 			replaceElement: true
 		},
-		'viewBookmarks': {
+		viewBookmarks: {
 			el: '#view-bookmarks-slot',
 			replaceElement: true
 		},
-		'emptyBookmarks': {
+		emptyBookmarks: {
 			el: '#empty-bookmarks-slot',
 			replaceElement: true
 		},
-		'bookmarkDetail': {
+		bookmarkDetail: {
 			el: '#bookmark-detail-slot',
 			replaceElement: true
 		}
 	},
-	events: {
-		'scroll': 'infiniteScroll'
-	},
 	initialize: function(options) {
+		var that = this;
 		this.app = options.app;
 		this.bookmarks = this.app.bookmarks;
-		this.selected = new Bookmarks;
-		this.listenTo(this.bookmarks.loadingState, 'change:fetching', this.infiniteScroll);
+		this.selected = new Bookmarks();
+		this.listenTo(
+			this.bookmarks.loadingState,
+			'change:fetching',
+			this.infiniteScroll
+		);
 		this.listenTo(this.bookmarks, 'select', this.onSelect);
 		this.listenTo(this.bookmarks, 'unselect', this.onUnselect);
 		this.listenTo(Radio.channel('nav'), 'navigate', this.onNavigate);
 		this.listenTo(Radio.channel('details'), 'show', this.onShowDetails);
 		this.listenTo(Radio.channel('details'), 'close', this.onCloseDetails);
+		document.addEventListener('scroll', function() {
+			that.infiniteScroll();
+		});
 	},
 	onRender: function() {
 		this.showChildView('mobileNav', new MobileNavView());
-		this.showChildView('bulkActions', new BulkActionsView({selected: this.selected, app: this.app}));
-		this.showChildView('viewBookmarks', new BookmarksView({collection: this.bookmarks, app: this.app}));
-		this.showChildView('emptyBookmarks', new EmptyBookmarksView({app: this.app}));
+		this.showChildView(
+			'viewBookmarks',
+			new BookmarksView({ collection: this.bookmarks, app: this.app })
+		);
+		this.showChildView(
+			'emptyBookmarks',
+			new EmptyBookmarksView({ app: this.app })
+		);
 	},
 	infiniteScroll: function(e) {
-		if (this.$el.prop('scrollHeight') < this.$el.prop('scrollTop') + this.$el.height() + 500) {
-			this.bookmarks.fetchPage()
+		if (
+			document.body.scrollHeight <
+			window.scrollY + window.innerHeight + 500
+		) {
+			this.bookmarks.fetchPage();
 		}
 	},
 	onSelect: function(model) {
 		if (this.selected.length == 0) {
 			this.$el.addClass('selection-active');
-			Radio.channel('details').trigger('close')
+			Radio.channel('details').trigger('close');
+			this.showChildView(
+				'bulkActions',
+				new BulkActionsView({ selected: this.selected, app: this.app })
+			);
 		}
 		this.selected.add(model);
 	},
 	onUnselect: function(model) {
 		if (this.selected.length == 1) {
 			this.$el.removeClass('selection-active');
+			this.detachChildView('bulkActions');
 		}
 		this.selected.remove(model);
 	},
 	onShowDetails: function(model) {
-		var view = new BookmarkDetailView({model: model, app: this.app});
-		this.showChildView('bookmarkDetail', view);
+		var view = this.getChildView('bookmarkDetail');
+		// toggle details when the same card is clicked twice
+		if (view && view.model.id === model.id) {
+			Radio.channel('details').trigger('close');
+		} else {
+			var oldView;
+			if ((oldView = this.detachChildView('bookmarkDetail'))) {
+				oldView.destroy();
+			}
+			var newView = new BookmarkDetailView({
+				model: model,
+				app: this.app,
+				slideIn: !view
+			});
+			this.showChildView('bookmarkDetail', newView);
+		}
 	},
-	onCloseDetails: function() {
-		this.detachChildView('bookmarkDetail');
+	onCloseDetails: function(evt) {
+		var that = this;
+		var view = this.getChildView('bookmarkDetail');
+		if (!view) return;
+		that.getChildView('bookmarkDetail').slideOut(function() {
+			that.detachChildView('bookmarkDetail').destroy();
+		});
 	}
 });

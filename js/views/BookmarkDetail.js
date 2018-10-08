@@ -1,5 +1,6 @@
 import _ from 'underscore';
 import Backbone from 'backbone';
+import Tag from '../models/Tag';
 import Tags from '../models/Tags';
 import TagsNavigationView from './TagsNavigation';
 import TagsSelectionView from './TagsSelection';
@@ -12,21 +13,20 @@ export default Marionette.View.extend({
 	template: _.template(templateString),
 	className: 'bookmark-detail',
 	regions: {
-		'tags': {
+		tags: {
 			el: '.tags'
 		}
 	},
 	ui: {
-		'link': 'h2 > a',
-		'close': '> .close',
-		'edit': '.edit',
-		'delete': '.delete',
-		'status': '.status'
+		preview: '.preview',
+		link: 'h2 > a',
+		close: '> .close',
+		edit: '.edit',
+		status: '.status'
 	},
 	events: {
 		'click @ui.link': 'clickLink',
 		'click @ui.close': 'close',
-		'click @ui.delete': 'delete',
 		'click h1': 'edit',
 		'click h2 .edit': 'edit',
 		'click .description': 'edit',
@@ -34,24 +34,55 @@ export default Marionette.View.extend({
 		'click .cancel': 'cancel'
 	},
 	initialize: function(opts) {
+		this.doSlideIn = opts.slideIn;
 		this.app = opts.app;
 		this.listenTo(this.model, 'change', this.render);
 		this.listenTo(this.model, 'destroy', this.onDestroy);
 		this.listenTo(this.app.tags, 'sync', this.render);
+
+		var that = this;
+		this.tags = new Tags(
+			this.model.get('tags').map(function(id) {
+				return that.app.tags.get(id);
+			})
+		);
+		this.listenTo(this.tags, 'add remove', this.submitTags);
+		this.listenTo(
+			Radio.channel('documentClicked'),
+			'click',
+			this.onDocumentClicked
+		);
 	},
 	onRender: function() {
-		var that = this;
-		this.tags = new Tags(this.model.get('tags').map(function(id) {
-			return that.app.tags.get(id);
-		}));
-		this.listenTo(this.tags, 'add remove', this.submitTags);
-		this.showChildView('tags', new TagsSelectionView({collection: this.app.tags, selected: this.tags, app: this.app }));
+		this.getUI('preview').css(
+			'background-image',
+			'url(bookmark/' + this.model.get('id') + '/image)'
+		);
+		this.getUI('preview').css('background-color', this.model.getColor());
+
+		this.showChildView(
+			'tags',
+			new TagsSelectionView({
+				collection: this.app.tags,
+				selected: this.tags,
+				app: this.app
+			})
+		);
 
 		if (this.savingState === 'saving') {
-			this.savingState = 'saved';
+			this.getUI('status')
+				.removeClass('saved')
+				.addClass('saving');
 		}
 		if (this.savingState === 'saved') {
-			this.getUI('status').addClass('saved');
+			this.getUI('status')
+				.addClass('saved')
+				.removeClass('saving');
+		}
+
+		if (this.doSlideIn) {
+			this.slideIn();
+			this.doSlideIn = false;
 		}
 	},
 	clickLink: function() {
@@ -70,23 +101,23 @@ export default Marionette.View.extend({
 			return;
 		}
 
-		switch($el.data('attribute')) {
-		case 'url':
-			$el.text(this.model.get('url'));
+		switch ($el.data('attribute')) {
+			case 'url':
+				$el.text(this.model.get('url'));
 			// fallthrough
-		case 'title':
-			$el.on('keydown', function(e) {
-				// enter
-				if (e.which === 13) {
-					that.submit($el);
+			case 'title':
+				$el.on('keydown', function(e) {
+					// enter
+					if (e.which === 13) {
+						that.submit($el);
+					}
+				});
+			case 'description':
+				if ($el.hasClass('empty')) {
+					$el.text('');
+					$el.removeClass('empty');
 				}
-			});
-			break;
-		case 'description':
-			if ($el.hasClass('empty')) {
-				$el.text('');
-			}
-			break;
+				break;
 		}
 		$el.prop('contenteditable', true);
 		$el.one('blur', function() {
@@ -95,14 +126,19 @@ export default Marionette.View.extend({
 		$el.focus();
 	},
 	submitTags: function() {
-		this.model.set({
-			'tags': this.tags.pluck('name'),
-		});
-		this.model.save({wait: true});
+		var that = this;
 		this.savingState = 'saving';
-		this.getUI('status').removeClass('saved').addClass('saving');
+		this.app.tags.add(this.tags.models);
+		this.model.set({
+			tags: this.tags.pluck('name')
+		});
+		this.model.once('sync', function() {
+			that.savingState = 'saved';
+		});
+		this.model.save();
 	},
 	submit: function($el) {
+		var that = this;
 		if (this.savingState === 'saving') {
 			return;
 		}
@@ -110,13 +146,31 @@ export default Marionette.View.extend({
 		this.model.set({
 			[$el.data('attribute')]: $el.text()
 		});
-		this.model.save({wait: true});
-		this.getUI('status').removeClass('saved').addClass('saving');
-	},
-	delete: function() {
-		this.model.destroy();
+		this.model.once('sync', function() {
+			that.savingState = 'saved';
+		});
+		this.model.save();
 	},
 	onDestroy: function() {
 		this.close();
+	},
+	onDocumentClicked: function(evt) {
+		if (
+			evt &&
+			(this.el === evt.target ||
+				$.contains(this.el, evt.target) ||
+				!$.contains(document.body, evt.target))
+		) {
+			return;
+		}
+		this.close();
+	},
+	slideIn: function(cb) {
+		this.$el.addClass('slide-in');
+		if (cb) setTimeout(cb, 200);
+	},
+	slideOut: function(cb) {
+		this.$el.addClass('slide-out');
+		if (cb) setTimeout(cb, 200);
 	}
 });

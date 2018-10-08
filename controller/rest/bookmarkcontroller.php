@@ -15,6 +15,8 @@ use OCP\IL10N;
 use \OCP\IRequest;
 use \OCP\AppFramework\ApiController;
 use \OCP\AppFramework\Http\JSONResponse;
+use \OCP\AppFramework\Http\DataResponse;
+use \OCP\AppFramework\Http\TemplateResponse;
 use \OCP\AppFramework\Http;
 use \OC\User\Manager;
 use \OCA\Bookmarks\Controller\Lib\Bookmarks;
@@ -23,7 +25,6 @@ use \OCA\Bookmarks\Controller\Lib\Helper;
 use OCP\Util;
 
 class BookmarkController extends ApiController {
-
 	private $userId;
 	private $db;
 	private $l10n;
@@ -67,22 +68,22 @@ class BookmarkController extends ApiController {
 		if ($user === null) {
 			$user = $this->userId;
 			$publicOnly = false;
-		}else {
+		} else {
 			$publicOnly = true;
 			if ($this->userManager->userExists($user) == false) {
 				$error = "User could not be identified";
-				return new JSONResponse(array('status' => 'error', 'data'=> $error), Http::STATUS_BAD_REQUEST);
+				return new JSONResponse(['status' => 'error', 'data'=> $error], Http::STATUS_BAD_REQUEST);
 			}
 		}
 		$bm = $this->bookmarks->findUniqueBookmark($id, $user);
-		if(!isset($bm['id'])) {
+		if (!isset($bm['id'])) {
 			return new JSONResponse(['status' => 'error'], Http::STATUS_NOT_FOUND);
 		}
 		if ($publicOnly === true && isset($bm['public']) && $bm['public'] != '1') {
-            $error = "Insufficient permissions";
-			return new JSONResponse(array('status' => 'error', 'data' => $error), Http::STATUS_BAD_REQUEST);
-    	}
-		return new JSONResponse(array('item' => $bm, 'status' => 'success'));
+			$error = "Insufficient permissions";
+			return new JSONResponse(['status' => 'error', 'data' => $error], Http::STATUS_BAD_REQUEST);
+		}
+		return new JSONResponse(['item' => $bm, 'status' => 'success']);
 	}
 
 	/**
@@ -96,6 +97,7 @@ class BookmarkController extends ApiController {
 	 * @param string sortby
 	 * @param array search
 	 * @param int limit
+	 * @param bool untagged
 	 * @return JSONResponse
 	 *
 	 * @NoAdminRequired
@@ -111,35 +113,61 @@ class BookmarkController extends ApiController {
 		$tags = null,
 		$conjunction = "or",
 		$sortby = "",
-		$search = array(),
-    $limit = 10
+		$search = [],
+		$limit = 10,
+		$untagged = false
 	) {
+		$this->registerResponder('rss', function ($res) {
+			if ($res->getData()['status'] === 'success') {
+				$bookmarks = $res->getData()['data'];
+				$description = '';
+			} else {
+				$bookmarks = [['id' => -1]];
+				$description = $res->getData()['data'];
+			}
+
+			$response = new TemplateResponse('bookmarks', 'rss', [
+				'rssLang'		=> $this->l10n->getLanguageCode(),
+				'rssPubDate'	=> date('r'),
+				'description'	=> $description,
+				'bookmarks'		=> $bookmarks
+			], '');
+			$response->setHeaders($res->getHeaders());
+			$response->setStatus($res->getStatus());
+			if (stristr($this->request->getHeader('accept'), 'application/rss+xml')) {
+				$response->addHeader('Content-Type', 'application/rss+xml');
+			} else {
+				$response->addHeader('Content-Type', 'text/xml; charset=UTF-8');
+			}
+			return $response;
+		});
+
 		if ($user === null) {
 			$user = $this->userId;
 			$publicOnly = false;
-		}else {
+		} else {
 			$publicOnly = true;
 			if ($this->userManager->userExists($user) == false) {
 				$error = "User could not be identified";
-				return new JSONResponse(array('status' => 'error', 'data'=> $error));
+				return new DataResponse(['status' => 'error', 'data'=> $error]);
 			}
 		}
 		if ($type === 'rel_tags' && !$publicOnly) { // XXX: libbookmarks#findTags needs a publicOnly option
 			$tags = $this->bookmarks->analyzeTagRequest($tag);
 			$qtags = $this->bookmarks->findTags($user, $tags);
-			return new JSONResponse(array('data' => $qtags, 'status' => 'success'));
+			return new DataResponse(['data' => $qtags, 'status' => 'success']);
 		}
 
 		// type == bookmark
 
 		if ($tag !== '') {
-		  $filterTag = $this->bookmarks->analyzeTagRequest($tag);
+			$filterTag = $this->bookmarks->analyzeTagRequest($tag);
 		} elseif (is_array($tags)) {
-		  $filterTag = $tags;
+			$filterTag = $tags;
 		} elseif (is_string($tags) && $tags !== '') {
 			$filterTag= [ $tags ];
 		} else {
-			$filterTag = array();
+			$filterTag = [];
 		}
 
 		$tagsOnly = true;
@@ -162,12 +190,22 @@ class BookmarkController extends ApiController {
 			$sqlSortColumn = 'lastmodified';
 		}
 
-		$attributesToSelect = array('url', 'title', 'id', 'user_id', 'description', 'public',
-			'added', 'lastmodified', 'clickcount', 'tags', 'image', 'favicon');
+		$attributesToSelect = ['url', 'title', 'id', 'user_id', 'description', 'public',
+			'added', 'lastmodified', 'clickcount', 'tags', 'image', 'favicon'];
 
-		$bookmarks = $this->bookmarks->findBookmarks($user, $offset, $sqlSortColumn, $filterTag,
-			$tagsOnly, $limit, $publicOnly, $attributesToSelect, $conjunction);
-		return new JSONResponse(array('data' => $bookmarks, 'status' => 'success'));
+		$bookmarks = $this->bookmarks->findBookmarks(
+			$user,
+			$offset,
+			$sqlSortColumn,
+			$filterTag,
+			$tagsOnly,
+			$limit,
+			$publicOnly,
+			$attributesToSelect,
+			$conjunction,
+			$untagged
+		);
+		return new DataResponse(['data' => $bookmarks, 'status' => 'success']);
 	}
 
 	/**
@@ -182,18 +220,20 @@ class BookmarkController extends ApiController {
 	 * @NoCSRFRequired
 	 * @CORS
 	 */
-	public function newBookmark($url = "", $item = array(), $title = "", $is_public = false, $description = "") {
+	public function newBookmark($url = "", $item = [], $title = "", $is_public = false, $description = "", $tags = []) {
 		$title = trim($title);
 		$image = null;
-		$tags = isset($item['tags']) ? $item['tags'] : array();
+		if (count($tags) === 0) {
+			$tags = isset($item['tags']) ? $item['tags'] : [];
+		}
 
-        try {
-            $id = $this->bookmarks->addBookmark($this->userId, $url, $title, $tags, $description, $is_public, $image);
-		} catch(\InvalidArgumentException $e) {
-			return new JSONResponse(array('status' => 'error', 'data' => [$e->getMessage()]), Http::STATUS_BAD_REQUEST);
-        }
-        $bm = $this->bookmarks->findUniqueBookmark($id, $this->userId);
-        return new JSONResponse(array('item' => $bm, 'status' => 'success'));
+		try {
+			$id = $this->bookmarks->addBookmark($this->userId, $url, $title, $tags, $description, $is_public, $image);
+		} catch (\InvalidArgumentException $e) {
+			return new JSONResponse(['status' => 'error', 'data' => [$e->getMessage()]], Http::STATUS_BAD_REQUEST);
+		}
+		$bm = $this->bookmarks->findUniqueBookmark($id, $this->userId);
+		return new JSONResponse(['item' => $bm, 'status' => 'success']);
 	}
 
 	/**
@@ -210,7 +250,7 @@ class BookmarkController extends ApiController {
 	 * @CORS
 	 */
 	//TODO id vs record_id?
-	public function legacyEditBookmark($id = null, $url = "", $item = array(), $title = "", $is_public = false, $record_id = null, $description = "") {
+	public function legacyEditBookmark($id = null, $url = "", $item = [], $title = "", $is_public = false, $record_id = null, $description = "") {
 		if ($id == null) {
 			return $this->newBookmark($url, $item, $title, $is_public, $description);
 		} else {
@@ -234,7 +274,6 @@ class BookmarkController extends ApiController {
 	 * @CORS
 	 */
 	public function editBookmark($id = null, $url = null, $item = null, $title = null, $is_public = null, $record_id = null, $description = null, $tags = null) {
-
 		if ($record_id !== null) {
 			$id = $record_id;
 		}
@@ -248,27 +287,27 @@ class BookmarkController extends ApiController {
 		];
 		if (is_array($item) && isset($item['tags']) && is_array($item['tags'])) {
 			$newProps['tags'] = $item['tags'];
-		}elseif (is_array($tags)) {
+		} elseif (is_array($tags)) {
 			$newProps['tags'] = $tags;
-		}else{
+		} else {
 			$newProps['tags'] = [];
 		}
 		foreach ($newProps as $prop => $value) {
-			if(!is_null($value)) {
+			if (!is_null($value)) {
 				$bookmark[$prop] = $value;
 			}
 		}
 
 		// Check if url and id are valid
 		$urlData = parse_url($bookmark['url']);
-		if(!$this->bookmarks->isProperURL($urlData) || !is_numeric($bookmark['id'])) {
-			return new JSONResponse(array(), Http::STATUS_BAD_REQUEST);
+		if (!$this->bookmarks->isProperURL($urlData) || !is_numeric($bookmark['id'])) {
+			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
 		}
 
 		$id = $this->bookmarks->editBookmark($this->userId, $bookmark['id'], $bookmark['url'], $bookmark['title'], $bookmark['tags'], $bookmark['description'], $bookmark['public']);
 
 		$bm = $this->bookmarks->findUniqueBookmark($id, $this->userId);
-		return new JSONResponse(array('item' => $bm, 'status' => 'success'));
+		return new JSONResponse(['item' => $bm, 'status' => 'success']);
 	}
 
 	/**
@@ -291,19 +330,19 @@ class BookmarkController extends ApiController {
 	 */
 	public function deleteBookmark($id = -1) {
 		if ($id == -1) {
-			return new JSONResponse(array(), Http::STATUS_BAD_REQUEST);
+			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
 		}
 
 		$bm = $this->bookmarks->findUniqueBookmark($id, $this->userId);
-		if(!isset($bm['id'])) {
+		if (!isset($bm['id'])) {
 			// If the item to delete is non-existent, let them believe we'ved deleted it
-			return new JSONResponse(array('status' => 'success'), Http::STATUS_OK);
+			return new JSONResponse(['status' => 'success'], Http::STATUS_OK);
 		}
 
 		if (!$this->bookmarks->deleteUrl($this->userId, $id)) {
-			return new JSONResponse(array(), Http::STATUS_BAD_REQUEST);
+			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
 		} else {
-			return new JSONResponse(array('status' => 'success'), Http::STATUS_OK);
+			return new JSONResponse(['status' => 'success'], Http::STATUS_OK);
 		}
 	}
 
@@ -317,7 +356,7 @@ class BookmarkController extends ApiController {
 	public function clickBookmark($url = "") {
 		$url = urldecode($url);
 		$urlData = parse_url($url);
-		if(!$this->bookmarks->isProperURL($urlData)) {
+		if (!$this->bookmarks->isProperURL($urlData)) {
 			return new JSONResponse([], Http::STATUS_BAD_REQUEST);
 		}
 
@@ -344,22 +383,22 @@ class BookmarkController extends ApiController {
 
 		if (empty($full_input)) {
 			Util::writeLog('bookmarks', "No file provided for import", Util::WARN);
-			$error = array();
+			$error = [];
 			$error[] = $this->l10n->t('No file provided for import');
 		} else {
-			$error = array();
+			$error = [];
 			$file = $full_input['tmp_name'];
 			if ($full_input['type'] == 'text/html') {
 				$error = $this->bookmarks->importFile($this->userId, $file);
 				if (empty($error)) {
-					return new JSONResponse(array('status' => 'success'));
+					return new JSONResponse(['status' => 'success']);
 				}
 			} else {
 				$error[] = $this->l10n->t('Unsupported file type for import');
 			}
 		}
 
-		return new JSONResponse(array('status' => 'error', 'data' => $error));
+		return new JSONResponse(['status' => 'error', 'data' => $error]);
 	}
 
 	/**
@@ -373,7 +412,6 @@ class BookmarkController extends ApiController {
 	 * @CORS
 	 */
 	public function exportBookmark() {
-
 		$file = <<<EOT
 <!DOCTYPE NETSCAPE-Bookmark-file-1>
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
@@ -387,12 +425,13 @@ EOT;
 		$bookmarks = $this->bookmarks->findBookmarks($this->userId, 0, 'id', [], true, -1);
 
 		foreach ($bookmarks as $bm) {
-
 			$url = \OC_Util::sanitizeHTML($bm['url']);
 
 			// discards records with no URL. This should not happen but
 			// a database could have old entries
-			if ($url === '') continue;
+			if ($url === '') {
+				continue;
+			}
 
 			$tags = implode(',', \OC_Util::sanitizeHTML($bm['tags']));
 			$title = trim($bm['title']);
@@ -404,7 +443,9 @@ EOT;
 			$description = htmlspecialchars($bm['description'], ENT_QUOTES, 'UTF-8');
 
 			$file .= '<DT><A HREF="' . $url . '" TAGS="' . $tags . '">' . $title . '</A>';
-			if(strlen($description)>0) $file .= '<DD>' . $description;
+			if (strlen($description)>0) {
+				$file .= '<DD>' . $description;
+			}
 			$file .= "\n";
 		}
 
